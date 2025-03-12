@@ -10,6 +10,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -257,6 +258,10 @@ func handleTelegramUpdates(config *Config) {
 				continue
 			}
 			address := parts[1]
+			if !isValidHexadecimal(address) {
+				sendMessage(chatID, "无效的地址格式。")
+				continue
+			}
 			name := "未命名账户"
 			if len(parts) == 3 {
 				name = parts[2]
@@ -270,6 +275,10 @@ func handleTelegramUpdates(config *Config) {
 			parts := strings.SplitN(msgText, " ", 2)
 			if len(parts) < 2 {
 				sendMessage(chatID, "用法: /unsubscribe <地址>")
+				continue
+			}
+			if !isValidHexadecimal(parts[1]) {
+				sendMessage(chatID, "无效的地址格式。")
 				continue
 			}
 			unsubscribeWallet(chatID, parts[1])
@@ -705,4 +714,9 @@ func shortenAddress(address string) string {
 		return address
 	}
 	return address[:6] + "..." + address[len(address)-4:]
+}
+
+func isValidHexadecimal(input string) bool {
+	re := regexp.MustCompile(`^0x[0-9a-fA-F]{40}$`)
+	return re.MatchString(input)
 }
