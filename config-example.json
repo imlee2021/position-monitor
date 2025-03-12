@@ -1,15 +1,5 @@
 {
   "telegramToken": "",
-  "chatID": "",
-  "pollingInterval": 30,
-  "addresses": [
-    {
-      "address": "0xe4d31c2541a9ce596419879b1a46ffc7cd202c62",
-      "name": "账户01"
-    },
-    {
-      "address": "0x044d0932b02f5045bc00e0a6818b7f98ef504681",
-      "name": "账户02"
-    }
-  ]
+  "superAdminID": "",
+  "pollingInterval": 5
 }

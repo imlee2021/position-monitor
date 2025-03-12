@@ -1,5 +1,9 @@
 # HyperLiquid持仓监控工具
 
+## 付费服务
+
+**[@position_monitor_bot](https://t.me/position_monitor_bot)** 是一个已经搭建好的 HyperLiquid 持仓监控工具，提供付费使用服务。如需便捷使用现成服务，可联系该 Bot 获取详情。
+
 ## 项目概述
 
 HyperLiquid持仓监控工具是一个用Go语言编写的应用程序，用于实时监控HyperLiquid交易平台上多个账户的持仓状态，并通过Telegram发送通知。该工具可以检测持仓变化、账户价值波动，并及时向用户推送相关信息。
@@ -33,29 +37,17 @@ HyperLiquid持仓监控工具是一个用Go语言编写的应用程序，用于�
 
 ```json
 {
-  "telegramToken": "YOUR_TELEGRAM_BOT_TOKEN",
-  "chatID": "YOUR_TELEGRAM_CHAT_ID",
-  "pollingInterval": 30,
-  "addresses": [
-    {
-      "address": "0x1234567890abcdef1234567890abcdef12345678",
-      "name": "账户1"
-    },
-    {
-      "address": "0xabcdef1234567890abcdef1234567890abcdef12",
-      "name": "账户2"
-    }
-  ]
+  "telegramToken": "",
+  "superAdminID": "",
+  "pollingInterval": 5
 }
 ```
 
 配置参数说明：
+
 - `telegramToken`：Telegram Bot的API令牌
-- `chatID`：接收通知的Telegram聊天ID
+- `superAdminID`：超级管理员的Telegram聊天ID
 - `pollingInterval`：轮询间隔（秒）
-- `addresses`：要监控的账户列表
-    - `address`：HyperLiquid账户地址
-    - `name`：账户的显示名称
 
 ## 使用方法
 
@@ -64,11 +56,11 @@ HyperLiquid持仓监控工具是一个用Go语言编写的应用程序，用于�
 3. 创建并配置`config.json`文件
 4. 编译程序：
    ```
-   go build -o hyperliquid-monitor
+   go build -o position-monitor
    ```
 5. 运行程序：
    ```
-   ./hyperliquid-monitor
+   ./position-monitor
    ```
 
 ## 运行流程
