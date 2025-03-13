@@ -563,6 +563,7 @@ func monitorAllWallets() {
 		if changes != "" {
 			// 通知所有订阅该地址的用户
 			for _, wallet := range subscribers {
+				changes = detectPositionChanges(wallet, currentPositions, currentAccountValue, state)
 				err = sendMessage(wallet.ChatID, changes)
 				if err != nil {
 					log.Printf("发送变化通知失败 %s (ChatID: %s): %v", address, wallet.ChatID, err)
