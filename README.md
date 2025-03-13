@@ -1,5 +1,9 @@
 # HyperLiquid持仓监控工具
 
+## 群组
+
+**[t.me/position_monitor](https://t.me/position_monitor)**
+
 ## 付费服务
 
 **[@position_monitor_bot](https://t.me/position_monitor_bot)** 是一个已经搭建好的 HyperLiquid 持仓监控工具，提供付费使用服务。如需便捷使用现成服务，可联系该 Bot 获取详情。
