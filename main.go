@@ -95,8 +95,8 @@ const (
 )
 
 var (
-	accountStates   = make(map[string]*AccountState)
-	wallets         = make(map[string]WalletConfig)
+	accountStates   = make(map[string]*AccountState) // 键为 address
+	wallets         = make(map[string]WalletConfig)  // 键为 chatID_address
 	walletMutex     sync.Mutex
 	bot             *tgbotapi.BotAPI
 	db              *sql.DB
@@ -105,7 +105,6 @@ var (
 )
 
 func main() {
-	// 初始化数据库
 	var err error
 	db, err = initDB()
 	if err != nil {
@@ -113,13 +112,11 @@ func main() {
 	}
 	defer db.Close()
 
-	// 加载配置
 	config, err = loadConfig(ConfigPath)
 	if err != nil {
 		log.Fatalf("加载配置失败: %v", err)
 	}
 
-	// 初始化Telegram Bot
 	bot, err = tgbotapi.NewBotAPI(config.TelegramToken)
 	if err != nil {
 		log.Fatalf("初始化Telegram Bot失败: %v", err)
@@ -127,10 +124,8 @@ func main() {
 	bot.Debug = false
 	log.Printf("Telegram Bot已授权: %s", bot.Self.UserName)
 
-	// 将超级管理员加入授权列表
 	authorizedUsers[config.SuperAdminID] = true
 
-	// 加载已保存的订阅和授权用户
 	if err := loadSubscriptionsFromDB(); err != nil {
 		log.Printf("加载订阅失败: %v", err)
 	}
@@ -138,10 +133,8 @@ func main() {
 		log.Printf("加载授权用户失败: %v", err)
 	}
 
-	// 启动Telegram消息处理
 	go handleTelegramUpdates(config)
 
-	// 主循环监控所有订阅的地址
 	for {
 		time.Sleep(time.Duration(config.PollingInterval) * time.Second)
 		monitorAllWallets()
@@ -154,7 +147,6 @@ func initDB() (*sql.DB, error) {
 		return nil, fmt.Errorf("打开数据库失败: %v", err)
 	}
 
-	// 创建订阅表
 	_, err = db.Exec(`
         CREATE TABLE IF NOT EXISTS subscriptions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -168,7 +160,6 @@ func initDB() (*sql.DB, error) {
 		return nil, fmt.Errorf("创建订阅表失败: %v", err)
 	}
 
-	// 创建状态表
 	_, err = db.Exec(`
         CREATE TABLE IF NOT EXISTS account_states (
             address TEXT PRIMARY KEY,
@@ -180,7 +171,6 @@ func initDB() (*sql.DB, error) {
 		return nil, fmt.Errorf("创建状态表失败: %v", err)
 	}
 
-	// 创建授权用户表
 	_, err = db.Exec(`
         CREATE TABLE IF NOT EXISTS authorized_users (
             chat_id TEXT PRIMARY KEY
@@ -312,24 +302,27 @@ func loadSubscriptionsFromDB() error {
 			ChatID:  chatID,
 		}
 
-		var accountValue float64
-		var positionsJSON string
-		err := db.QueryRow("SELECT account_value, positions FROM account_states WHERE address = ?", address).
-			Scan(&accountValue, &positionsJSON)
-		if err != nil && err != sql.ErrNoRows {
-			return err
-		}
-
-		positions := make(map[string]Position)
-		if positionsJSON != "" {
-			if err := json.Unmarshal([]byte(positionsJSON), &positions); err != nil {
+		// 只加载一次状态
+		if _, exists := accountStates[address]; !exists {
+			var accountValue float64
+			var positionsJSON string
+			err := db.QueryRow("SELECT account_value, positions FROM account_states WHERE address = ?", address).
+				Scan(&accountValue, &positionsJSON)
+			if err != nil && err != sql.ErrNoRows {
 				return err
 			}
-		}
 
-		accountStates[address] = &AccountState{
-			LastPositions:    positions,
-			LastAccountValue: accountValue,
+			positions := make(map[string]Position)
+			if positionsJSON != "" {
+				if err := json.Unmarshal([]byte(positionsJSON), &positions); err != nil {
+					return err
+				}
+			}
+
+			accountStates[address] = &AccountState{
+				LastPositions:    positions,
+				LastAccountValue: accountValue,
+			}
 		}
 	}
 	return nil
@@ -442,9 +435,12 @@ func subscribeWallet(chatID, address, name string) {
 		log.Printf("保存订阅到数据库失败: %v", err)
 	}
 
-	accountStates[address] = &AccountState{
-		LastPositions:    make(map[string]Position),
-		LastAccountValue: 0,
+	// 如果是第一个订阅该地址的用户，初始化状态
+	if _, exists := accountStates[address]; !exists {
+		accountStates[address] = &AccountState{
+			LastPositions:    make(map[string]Position),
+			LastAccountValue: 0,
+		}
 	}
 
 	go func() {
@@ -455,11 +451,15 @@ func subscribeWallet(chatID, address, name string) {
 			return
 		}
 
+		// 发送初始状态给新订阅用户
 		message := generateInitialStatusMessage(wallet, currentPositions, currentAccountValue)
 		err = sendMessage(chatID, message)
 		if err != nil {
 			log.Printf("发送初始状态失败 %s: %v", address, err)
-		} else {
+		}
+
+		// 如果是第一个订阅者，更新状态
+		if len(wallets) == 1 || !hasSubscribers(address, chatID) {
 			accountStates[address].LastPositions = currentPositions
 			accountStates[address].LastAccountValue = currentAccountValue
 			if err := saveAccountStateToDB(address, accountStates[address]); err != nil {
@@ -469,6 +469,17 @@ func subscribeWallet(chatID, address, name string) {
 	}()
 
 	sendMessage(chatID, fmt.Sprintf("已订阅地址 %s (%s)", shortenAddress(address), name))
+}
+
+// 检查是否有其他订阅者
+func hasSubscribers(address, excludeChatID string) bool {
+	for key := range wallets {
+		wallet := wallets[key]
+		if wallet.Address == address && wallet.ChatID != excludeChatID {
+			return true
+		}
+	}
+	return false
 }
 
 func unsubscribeWallet(chatID, address string) {
@@ -484,6 +495,15 @@ func unsubscribeWallet(chatID, address string) {
 	delete(wallets, key)
 	if err := deleteSubscriptionFromDB(chatID, address); err != nil {
 		log.Printf("从数据库删除订阅失败: %v", err)
+	}
+
+	// 如果没有其他订阅者，清理状态
+	if !hasSubscribers(address, "") {
+		delete(accountStates, address)
+		_, err := db.Exec("DELETE FROM account_states WHERE address = ?", address)
+		if err != nil {
+			log.Printf("删除账户状态失败 %s: %v", address, err)
+		}
 	}
 
 	sendMessage(chatID, fmt.Sprintf("已取消订阅地址 %s", shortenAddress(address)))
@@ -515,25 +535,44 @@ func monitorAllWallets() {
 	}
 	walletMutex.Unlock()
 
+	// 按地址聚合订阅者
+	addressSubscribers := make(map[string][]WalletConfig)
 	for _, wallet := range walletsCopy {
-		currentPositions, currentAccountValue, err := fetchPositions(wallet.Address)
+		addressSubscribers[wallet.Address] = append(addressSubscribers[wallet.Address], wallet)
+	}
+
+	// 对每个地址只获取一次数据
+	for address, subscribers := range addressSubscribers {
+		currentPositions, currentAccountValue, err := fetchPositions(address)
 		if err != nil {
-			log.Printf("监控 %s 失败: %v", wallet.Address, err)
+			log.Printf("监控 %s 失败: %v", address, err)
 			continue
 		}
 
-		state := accountStates[wallet.Address]
-		changes := detectPositionChanges(wallet, currentPositions, currentAccountValue, state)
+		state, exists := accountStates[address]
+		if !exists {
+			// 如果状态不存在，可能是新地址，直接初始化并通知所有订阅者
+			state = &AccountState{
+				LastPositions:    make(map[string]Position),
+				LastAccountValue: 0,
+			}
+			accountStates[address] = state
+		}
+
+		changes := detectPositionChanges(subscribers[0], currentPositions, currentAccountValue, state)
 		if changes != "" {
-			err = sendMessage(wallet.ChatID, changes)
-			if err != nil {
-				log.Printf("发送变化通知失败 %s: %v", wallet.Address, err)
-			} else {
-				state.LastPositions = currentPositions
-				state.LastAccountValue = currentAccountValue
-				if err := saveAccountStateToDB(wallet.Address, state); err != nil {
-					log.Printf("保存账户状态失败 %s: %v", wallet.Address, err)
+			// 通知所有订阅该地址的用户
+			for _, wallet := range subscribers {
+				err = sendMessage(wallet.ChatID, changes)
+				if err != nil {
+					log.Printf("发送变化通知失败 %s (ChatID: %s): %v", address, wallet.ChatID, err)
 				}
+			}
+			// 更新状态
+			state.LastPositions = currentPositions
+			state.LastAccountValue = currentAccountValue
+			if err := saveAccountStateToDB(address, state); err != nil {
+				log.Printf("保存账户状态失败 %s: %v", address, err)
 			}
 		}
 	}
